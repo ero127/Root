@@ -1,7 +1,8 @@
 # Jarvis: your hands-free voice assistant
 
 Talk to Jarvis out loud. He listens through your microphone, understands you,
-does what you ask on your computer, and answers out loud. No typing.
+does what you ask on your computer (he can even see your screen and click for you),
+and answers out loud. No typing.
 
 ## What you can say
 
@@ -21,7 +22,22 @@ seconds to keep talking without saying "Jarvis" again.
 | "Jarvis, set the volume to 30" | Changes the speaker volume |
 | "Jarvis, how much disk space do I have?" | Runs a computer command, but **asks you out loud first** (answer "yes" or "no") |
 | "Jarvis, what time is it?" / any question | Answers it |
+| "Jarvis, what's on my screen?" | Looks at your screen and tells you |
+| "Jarvis, in Spotify click Liked Songs and play the first one" | Sees the screen, moves the mouse, clicks |
+| "Jarvis, write an email to Sam saying I'm running late" | Opens your email, clicks, types it, and **asks before sending** |
 | "Goodbye" | Turns Jarvis off |
+
+### Full control of your screen
+
+Jarvis can see your screen, move the mouse, click buttons, scroll and type,
+inside any app or website, like a person sitting at your computer.
+
+- He says **"On it"** when he starts using the screen. Hands off the mouse while he works.
+- **To stop him right away, push your mouse hard into any corner of the screen.**
+- He **asks out loud first** before buying or paying, sending emails or messages,
+  deleting things, typing passwords, or changing settings.
+- He only takes orders from your voice, never from text he reads on a web page or in an email.
+- Screen tasks take more steps, so they cost more API credit than quick questions.
 
 ## One-time setup
 
