@@ -11,6 +11,7 @@ import argparse
 import datetime
 import os
 import platform
+import queue
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,9 @@ SYSTEM = platform.system()  # "Windows", "Darwin" (macOS) or "Linux"
 # Words that end the program when said on their own.
 EXIT_PHRASES = {"goodbye", "good bye", "bye", "exit", "quit", "shut down", "stop listening"}
 
+# On Windows, keep commands Jarvis runs from flashing a black console window.
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if SYSTEM == "Windows" else 0
+
 client = anthropic.Anthropic()
 recognizer = sr.Recognizer()
 recognizer.pause_threshold = 0.8  # seconds of silence that mark the end of a sentence
@@ -51,15 +55,42 @@ def show(text: str) -> None:
         print(text)
 
 
+# All speech goes through one background thread. The voice engine breaks if two
+# threads talk at once (e.g. a timer going off while Jarvis is answering).
+_speech_queue: queue.Queue = queue.Queue()
+
+
+def _speech_worker() -> None:
+    if SYSTEM == "Windows":
+        try:
+            import comtypes  # installed with pyttsx3 on Windows
+            comtypes.CoInitialize()  # the Windows voice needs this on a non-main thread
+        except Exception:
+            pass
+    while True:
+        text, done = _speech_queue.get()
+        try:
+            # A fresh engine per call avoids pyttsx3 going silent after the first reply.
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 185)
+            engine.say(text)
+            engine.runAndWait()
+            engine.stop()
+        except Exception as e:
+            show(f"[voice error: {e}]")
+        finally:
+            done.set()
+
+
+threading.Thread(target=_speech_worker, daemon=True).start()
+
+
 def speak(text: str) -> None:
-    """Say text out loud."""
+    """Say text out loud and wait until it has been said."""
     show(f"\nJarvis: {text}")
-    # A fresh engine per call avoids pyttsx3 going silent after the first reply.
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 185)
-    engine.say(text)
-    engine.runAndWait()
-    engine.stop()
+    done = threading.Event()
+    _speech_queue.put((text, done))
+    done.wait()
 
 
 def listen(mic: sr.Microphone, timeout: float | None = None) -> str:
@@ -145,7 +176,8 @@ def open_app(name: str) -> str:
     try:
         if SYSTEM == "Windows":
             # "start" finds apps registered with Windows (notepad, calc, spotify, winword...).
-            subprocess.Popen(f'start "" "{name}"', shell=True)
+            safe = name.replace('"', "").replace("&", "").replace("|", "")
+            subprocess.Popen(f'start "" "{safe}"', shell=True, creationflags=NO_WINDOW)
         elif SYSTEM == "Darwin":
             result = subprocess.run(["open", "-a", name], capture_output=True, text=True)
             if result.returncode != 0:
@@ -224,7 +256,8 @@ def set_volume(level: int) -> str:
                 "1..50 | % { $w.SendKeys([char]174) };"
                 f"1..{level // 2} | % {{ $w.SendKeys([char]175) }}"
             )
-            subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True)
+            subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                           check=True, creationflags=NO_WINDOW)
     except (OSError, subprocess.CalledProcessError) as e:
         return f"Could not change the volume: {e}"
     return f"Volume set to {level}%"
@@ -243,7 +276,8 @@ def run_computer_command(command: str, reason: str) -> str:
     if not confirm(f"I want to {reason}. Should I go ahead?"):
         return "The user said no, so the command was not run."
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True,
+                                timeout=60, creationflags=NO_WINDOW)
     except subprocess.TimeoutExpired:
         return "The command took too long and was stopped."
     output = (result.stdout + result.stderr).strip()
@@ -364,6 +398,9 @@ def main() -> None:
         except anthropic.APIStatusError as e:
             show(f"[API error: {e}]")
             reply = "Something went wrong on my end. Please try again."
+        except Exception as e:  # never die silently: there is no window to show the error
+            show(f"[unexpected error: {e!r}]")
+            reply = "Sorry, something went wrong with that one. Please try again."
 
         history.append({"role": "assistant", "content": reply})
         history = history[-40:]  # keep the last 20 exchanges
@@ -376,3 +413,9 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+    except Exception:
+        # There's no window to show a crash, so save it to a file and say so out loud.
+        import traceback
+        Path(__file__).with_name("jarvis_error.log").write_text(traceback.format_exc(), encoding="utf-8")
+        speak("Sorry, I ran into a problem and have to stop. "
+              "The details are in the file jarvis error log, in my folder.")
