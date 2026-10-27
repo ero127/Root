@@ -25,14 +25,14 @@ seconds to keep talking without saying "Jarvis" again.
 
 ## One-time setup
 
-1. **Install Python 3.10 or newer** from <https://www.python.org/downloads/>.
-   On Windows, tick **"Add Python to PATH"** during install.
+1. **Python** — on Windows the start file downloads and installs it for you.
+   On Mac/Linux, install Python 3.10+ from <https://www.python.org/downloads/>.
 2. **Get an Anthropic API key** at <https://console.anthropic.com/> (the
    "API Keys" page). This is Jarvis's brain.
 3. **Download this folder** to your computer.
 4. **Start Jarvis**:
-   - **Windows:** double-click `start_windows.bat`. The first time, it asks
-     for your API key and installs everything.
+   - **Windows:** double-click `start_windows.bat`. The first time, it downloads
+     and installs everything (Python included) and asks for your API key.
    - **Mac / Linux:** open Terminal in this folder and run `./start_mac_linux.sh`.
 
 After that, double-clicking (or running) the start file is all you ever need to do.
