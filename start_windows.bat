@@ -16,5 +16,5 @@ if not exist "api_key.txt" (
 )
 set /p ANTHROPIC_API_KEY=<api_key.txt
 
-python assistant.py %*
-pause
+rem Run with no window at all: Jarvis only talks. Say "goodbye" to stop him.
+start "" .venv\Scripts\pythonw.exe assistant.py %*

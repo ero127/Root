@@ -41,9 +41,19 @@ recognizer.pause_threshold = 0.8  # seconds of silence that mark the end of a se
 # Speaking and listening
 # ---------------------------------------------------------------------------
 
+# Voice only by default: nothing is shown on screen. Start with --show-text to
+# also see what was heard and said (handy when something isn't working).
+SHOW_TEXT = False
+
+
+def show(text: str) -> None:
+    if SHOW_TEXT:
+        print(text)
+
+
 def speak(text: str) -> None:
-    """Say text out loud (and print it so you can see what was said)."""
-    print(f"\nJarvis: {text}")
+    """Say text out loud."""
+    show(f"\nJarvis: {text}")
     # A fresh engine per call avoids pyttsx3 going silent after the first reply.
     engine = pyttsx3.init()
     engine.setProperty("rate", 185)
@@ -67,9 +77,11 @@ def listen(mic: sr.Microphone, timeout: float | None = None) -> str:
     except sr.UnknownValueError:
         return ""
     except sr.RequestError as e:
-        print(f"[speech service unavailable: {e}]")
+        show(f"[speech service unavailable: {e}]")
+        speak("I can't hear you properly right now. Please check the internet connection.")
+        time.sleep(5)
         return ""
-    print(f"\nYou: {text}")
+    show(f"\nYou: {text}")
     return text.strip()
 
 
@@ -283,27 +295,30 @@ def ask_claude(history: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    global _mic
+    global _mic, SHOW_TEXT
     parser = argparse.ArgumentParser(description="Hands-free voice assistant")
+    parser.add_argument("--show-text", action="store_true",
+                        help="Also show on screen what was heard and said")
     parser.add_argument("--wake-word", default="jarvis",
                         help='Word that gets the assistant\'s attention (default: "jarvis")')
     parser.add_argument("--always-listen", action="store_true",
                         help="Treat everything you say as a command, no wake word needed")
     args = parser.parse_args()
+    SHOW_TEXT = args.show_text
     wake = args.wake_word.lower()
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        print("No Anthropic API key found. Set ANTHROPIC_API_KEY first (see README.md).")
+        speak("I don't have my API key yet, so I can't think. Please run the setup again.")
         sys.exit(1)
 
     try:
         _mic = sr.Microphone()
     except (OSError, AttributeError) as e:
-        print(f"Could not open the microphone: {e}\nInstall PyAudio (see README.md).")
+        show(f"Could not open the microphone: {e}")
+        speak("I can't find a microphone. Please plug one in and start me again.")
         sys.exit(1)
 
-    print("Adjusting to background noise, stay quiet for a second...")
-    with _mic as source:
+    with _mic as source:  # learn how loud the room is so background noise is ignored
         recognizer.adjust_for_ambient_noise(source, duration=1.5)
 
     history: list[dict] = []
@@ -347,7 +362,7 @@ def main() -> None:
         except anthropic.APIConnectionError:
             reply = "I can't reach the internet right now."
         except anthropic.APIStatusError as e:
-            print(f"[API error: {e}]")
+            show(f"[API error: {e}]")
             reply = "Something went wrong on my end. Please try again."
 
         history.append({"role": "assistant", "content": reply})
@@ -360,4 +375,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nBye!")
+        pass

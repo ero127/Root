@@ -36,6 +36,8 @@ seconds to keep talking without saying "Jarvis" again.
    - **Mac / Linux:** open Terminal in this folder and run `./start_mac_linux.sh`.
 
 After that, double-clicking (or running) the start file is all you ever need to do.
+Jarvis runs hidden in the background with **nothing on the screen**: he only talks,
+and you only talk. Typing in your API key that first time is the only typing you'll ever do.
 
 ### If the microphone part fails to install
 
@@ -50,14 +52,15 @@ Privacy → Microphone; Mac: System Settings → Privacy & Security → Micropho
 ## Options
 
 ```bash
+python assistant.py --show-text          # also show the words on screen (for fixing problems)
 python assistant.py --always-listen      # no wake word: everything you say is a command
 python assistant.py --wake-word computer # call him "computer" instead of "Jarvis"
 ```
 
 ## Good to know
 
-- Jarvis needs an internet connection. Your speech is turned into text by
-  Google's free speech service and then sent to Claude.
+- Jarvis needs an internet connection. Behind the scenes (you never see it),
+  Google's free speech service turns your voice into words for Claude.
 - Each request uses your Anthropic API credit (a few cents at most per command).
 - Jarvis never runs a computer command without you saying "yes" first.
 - Want him to do something new? Add a function with `@beta_tool` in

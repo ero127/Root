@@ -17,4 +17,6 @@ if [ ! -f api_key.txt ]; then
 fi
 export ANTHROPIC_API_KEY="$(tr -d '[:space:]' < api_key.txt)"
 
-python assistant.py "$@"
+# Run in the background with nothing on screen. Say "goodbye" to stop him.
+nohup python assistant.py "$@" >/dev/null 2>&1 &
+echo "Jarvis is running. You can close this window."
