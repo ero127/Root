@@ -2,7 +2,7 @@
 cd "$(dirname "$0")"
 
 if [ ! -d .venv ]; then
-    echo "Setting up Jarvis for the first time..."
+    echo "Setting up Mike for the first time..."
     python3 -m venv .venv || { echo "Python 3 is not installed. Get it from python.org"; exit 1; }
     . .venv/bin/activate
     pip install -r requirements.txt
@@ -19,4 +19,4 @@ export ANTHROPIC_API_KEY="$(tr -d '[:space:]' < api_key.txt)"
 
 # Run in the background with nothing on screen. Say "goodbye" to stop him.
 nohup python assistant.py "$@" >/dev/null 2>&1 &
-echo "Jarvis is running. You can close this window."
+echo "Mike is running. You can close this window."

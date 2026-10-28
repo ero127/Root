@@ -1,4 +1,4 @@
-"""Jarvis - a hands-free voice assistant powered by Claude.
+"""Mike - a hands-free voice assistant powered by Claude.
 
 Talk to it out loud, it answers out loud, and it can carry out commands on
 your computer (open websites and apps, search, set timers, take notes,
@@ -12,6 +12,7 @@ import datetime
 import os
 import platform
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ SYSTEM = platform.system()  # "Windows", "Darwin" (macOS) or "Linux"
 # Words that end the program when said on their own.
 EXIT_PHRASES = {"goodbye", "good bye", "bye", "exit", "quit", "shut down", "stop listening"}
 
-# On Windows, keep commands Jarvis runs from flashing a black console window.
+# On Windows, keep commands Mike runs from flashing a black console window.
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if SYSTEM == "Windows" else 0
 
 client = anthropic.Anthropic()
@@ -56,7 +57,7 @@ def show(text: str) -> None:
 
 
 # All speech goes through one background thread. The voice engine breaks if two
-# threads talk at once (e.g. a timer going off while Jarvis is answering).
+# threads talk at once (e.g. a timer going off while Mike is answering).
 _speech_queue: queue.Queue = queue.Queue()
 
 
@@ -87,7 +88,7 @@ threading.Thread(target=_speech_worker, daemon=True).start()
 
 def speak(text: str) -> None:
     """Say text out loud and wait until it has been said."""
-    show(f"\nJarvis: {text}")
+    show(f"\nMike: {text}")
     done = threading.Event()
     _speech_queue.put((text, done))
     done.wait()
@@ -128,7 +129,7 @@ def confirm(question: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Commands Jarvis can carry out (tools Claude can call)
+# Commands Mike can carry out (tools Claude can call)
 # ---------------------------------------------------------------------------
 
 @beta_tool
@@ -200,7 +201,7 @@ def get_date_and_time() -> str:
 
 @beta_tool
 def set_timer(seconds: int, label: str = "Timer") -> str:
-    """Start a countdown; Jarvis says the label out loud when it finishes.
+    """Start a countdown; Mike says the label out loud when it finishes.
 
     Args:
         seconds: How long the timer runs, in seconds.
@@ -302,13 +303,13 @@ FUNCTION_TOOLS = [
 ]
 TOOL_BY_NAME = {t.name: t for t in FUNCTION_TOOLS}
 TOOLS = [t.to_dict() for t in FUNCTION_TOOLS] + [
-    # Lets Jarvis look things up on the internet (news, weather, sports, facts).
+    # Lets Mike look things up on the internet (news, weather, sports, facts).
     {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
-    # Lets Jarvis see the screen and use the mouse and keyboard (screenshot, click, type...).
+    # Lets Mike see the screen and use the mouse and keyboard (screenshot, click, type...).
     {"type": "computer_toolset_20260801"},
 ]
 
-SYSTEM_PROMPT = f"""You are Jarvis, a friendly voice assistant running on the user's {SYSTEM} computer.
+SYSTEM_PROMPT = f"""You are Mike, a friendly voice assistant running on the user's {SYSTEM} computer.
 The user talks to you out loud and hears your replies through a text-to-speech voice, so:
 - Answer in one to three short, natural spoken sentences.
 - Never use markdown, bullet points, lists, emojis, code blocks or URLs in your replies.
@@ -337,7 +338,7 @@ _gui = None
 
 
 class UserStopped(Exception):
-    """The user slammed the mouse into a screen corner to stop Jarvis."""
+    """The user slammed the mouse into a screen corner to stop Mike."""
 
 
 def gui():
@@ -345,7 +346,7 @@ def gui():
     global _gui
     if _gui is None:
         import pyautogui
-        pyautogui.FAILSAFE = True  # moving the mouse into a screen corner stops Jarvis
+        pyautogui.FAILSAFE = True  # moving the mouse into a screen corner stops Mike
         pyautogui.PAUSE = 0.05
         _gui = pyautogui
     return _gui
@@ -577,13 +578,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Hands-free voice assistant")
     parser.add_argument("--show-text", action="store_true",
                         help="Also show on screen what was heard and said")
-    parser.add_argument("--wake-word", default="jarvis",
-                        help='Word that gets the assistant\'s attention (default: "jarvis")')
+    parser.add_argument("--wake-word", default="mike",
+                        help='Word that gets the assistant\'s attention (default: "mike")')
     parser.add_argument("--always-listen", action="store_true",
                         help="Treat everything you say as a command, no wake word needed")
     args = parser.parse_args()
     SHOW_TEXT = args.show_text
     wake = args.wake_word.lower()
+    # Speech recognition often writes "Mike" as "mic" or "Mikey", so accept those too.
+    names = {wake} | ({"mic", "mikey", "myke", "mike's"} if wake == "mike" else set())
+    wake_pattern = re.compile(r"\b(" + "|".join(map(re.escape, names)) + r")\b")
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         speak("I don't have my API key yet, so I can't think. Please run the setup again.")
@@ -603,9 +607,9 @@ def main() -> None:
     awake_until = 0.0  # after a reply you can keep talking without the wake word
 
     if args.always_listen:
-        speak("Hi, I'm Jarvis. I'm listening, just talk to me.")
+        speak("Hi, I'm Mike. I'm listening, just talk to me.")
     else:
-        speak(f"Hi, I'm Jarvis. Say {args.wake_word} whenever you need me.")
+        speak(f"Hi, I'm Mike. Say {args.wake_word} whenever you need me.")
 
     while True:
         heard = listen(_mic)
@@ -615,10 +619,11 @@ def main() -> None:
 
         in_conversation = args.always_listen or time.time() < awake_until
         if not in_conversation:
-            if wake not in lowered:
+            found = wake_pattern.search(lowered)
+            if not found:
                 continue  # not talking to us
-            # Keep whatever came after the wake word, e.g. "Jarvis, open YouTube".
-            heard = heard[lowered.index(wake) + len(wake):].strip(" ,.!?")
+            # Keep whatever came after the wake word, e.g. "Mike, open YouTube".
+            heard = heard[found.end():].strip(" ,.!?")
             if not heard:
                 speak("Yes?")
                 heard = listen(_mic, timeout=8)
@@ -660,6 +665,6 @@ if __name__ == "__main__":
     except Exception:
         # There's no window to show a crash, so save it to a file and say so out loud.
         import traceback
-        Path(__file__).with_name("jarvis_error.log").write_text(traceback.format_exc(), encoding="utf-8")
+        Path(__file__).with_name("mike_error.log").write_text(traceback.format_exc(), encoding="utf-8")
         speak("Sorry, I ran into a problem and have to stop. "
-              "The details are in the file jarvis error log, in my folder.")
+              "The details are in the file mike error log, in my folder.")

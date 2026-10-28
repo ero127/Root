@@ -19,9 +19,9 @@ pause
 exit /b 1
 
 :have_python
-rem ---- Download everything Jarvis needs (one time only) ----
+rem ---- Download everything Mike needs (one time only) ----
 if exist ".venv\Scripts\pythonw.exe" goto have_venv
-echo Setting up Jarvis for the first time...
+echo Setting up Mike for the first time...
 "%PY%" -m venv .venv
 .venv\Scripts\python.exe -m pip install --upgrade pip
 .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -40,5 +40,5 @@ call echo %%KEY%%> api_key.txt
 :have_key
 set /p ANTHROPIC_API_KEY=<api_key.txt
 
-rem Run with no window at all: Jarvis only talks. Say "goodbye" to stop him.
+rem Run with no window at all: Mike only talks. Say "goodbye" to stop him.
 start "" .venv\Scripts\pythonw.exe assistant.py %*
