@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -87,6 +88,37 @@ def show(text: str) -> None:
 _speech_queue: queue.Queue = queue.Queue()
 
 
+# Mike's voice: a natural, human-sounding voice (Microsoft's free online "neural"
+# voices, the ones Edge uses for Read Aloud). Other good ones: en-US-BrianNeural,
+# en-US-ChristopherNeural, en-GB-RyanNeural.
+VOICE = "en-US-AndrewNeural"
+VOICE_FILE = Path(tempfile.gettempdir()) / "mike_voice.mp3"
+
+
+def _say_natural(text: str) -> None:
+    import asyncio
+    import edge_tts
+    os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+    import pygame
+    asyncio.run(edge_tts.Communicate(text, VOICE, rate="+5%").save(str(VOICE_FILE)))
+    if not pygame.mixer.get_init():
+        pygame.mixer.init()
+    pygame.mixer.music.load(str(VOICE_FILE))
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        time.sleep(0.05)
+    pygame.mixer.music.unload()  # let the file be overwritten next time
+
+
+def _say_robot(text: str) -> None:
+    # A fresh engine per call avoids pyttsx3 going silent after the first reply.
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 185)
+    engine.say(text)
+    engine.runAndWait()
+    engine.stop()
+
+
 def _speech_worker() -> None:
     if SYSTEM == "Windows":
         try:
@@ -94,27 +126,23 @@ def _speech_worker() -> None:
             comtypes.CoInitialize()  # the Windows voice needs this on a non-main thread
         except Exception:
             pass
-    use_backup = False
+    # Try the human voice first; if it keeps failing (e.g. no internet), fall back to
+    # the computer's built-in voice, and on Windows to its own speech as a last resort.
+    voices = [_say_natural, _say_robot] + ([say_with_windows_voice] if SYSTEM == "Windows" else [])
+    failures = {v: 0 for v in voices}
     while True:
         text, done = _speech_queue.get()
         try:
-            if use_backup:
-                say_with_windows_voice(text)
-            else:
-                # A fresh engine per call avoids pyttsx3 going silent after the first reply.
-                engine = pyttsx3.init()
-                engine.setProperty("rate", 185)
-                engine.say(text)
-                engine.runAndWait()
-                engine.stop()
-        except Exception as e:
-            show(f"[voice error: {e!r}]")
-            if SYSTEM == "Windows" and not use_backup:
-                use_backup = True  # switch to Windows' built-in voice from now on
+            for voice in voices:
+                if failures[voice] >= 2:
+                    continue  # this voice keeps failing; skip it
                 try:
-                    say_with_windows_voice(text)
-                except Exception as e2:
-                    show(f"[backup voice error: {e2!r}]")
+                    voice(text)
+                    failures[voice] = 0
+                    break
+                except Exception as e:
+                    failures[voice] += 1
+                    show(f"[{voice.__name__} failed: {e!r}]")
         finally:
             done.set()
 
@@ -143,6 +171,7 @@ def listen(mic: sr.Microphone, timeout: float | None = None) -> str:
     try:
         text = recognizer.recognize_google(audio)
     except sr.UnknownValueError:
+        show("[heard a sound but couldn't make out any words]")
         return ""
     except sr.RequestError as e:
         show(f"[speech service unavailable: {e}]")
@@ -347,6 +376,8 @@ TOOLS = [t.to_dict() for t in FUNCTION_TOOLS] + [
 
 SYSTEM_PROMPT = f"""You are Mike, a friendly voice assistant running on the user's {SYSTEM} computer.
 The user talks to you out loud and hears your replies through a text-to-speech voice, so:
+- Talk like a real, friendly person, not a robot: casual, warm, with contractions
+  ("I'll", "you're"), the way a helpful friend would say it out loud.
 - Answer in one to three short, natural spoken sentences.
 - Never use markdown, bullet points, lists, emojis, code blocks or URLs in your replies.
 - When the user asks you to do something, use your tools to actually do it, then briefly say what you did.
@@ -642,18 +673,26 @@ def main() -> None:
         speak("I can't find a microphone. Please plug one in and start me again.")
         sys.exit(1)
 
-    show("Microphone found, measuring background noise")
+    try:
+        import pyaudio
+        show("Using microphone: " + pyaudio.PyAudio().get_default_input_device_info()["name"])
+    except Exception:
+        show("Microphone found")
+    show("Measuring background noise, stay quiet for a moment")
     with _mic as source:  # learn how loud the room is so background noise is ignored
         recognizer.adjust_for_ambient_noise(source, duration=1.5)
+    # A noisy moment while measuring can make Mike nearly deaf; cap how loud you must be.
+    recognizer.energy_threshold = max(150, min(recognizer.energy_threshold, 800))
+    show(f"Hearing sensitivity set to {recognizer.energy_threshold:.0f} (lower hears quieter voices)")
     show("Saying hello")
 
     history: list[dict] = []
     awake_until = 0.0  # after a reply you can keep talking without the wake word
 
     if args.always_listen:
-        speak("Hi, I'm Mike. I'm listening, just talk to me.")
+        speak("Hey, it's Mike. I'm listening, just talk to me.")
     else:
-        speak(f"Hi, I'm Mike. Say {args.wake_word} whenever you need me.")
+        speak(f"Hey, it's Mike. Just say {args.wake_word} whenever you need me.")
 
     show("Ready and listening")
     while True:
@@ -669,8 +708,8 @@ def main() -> None:
                 continue  # not talking to us
             # Keep whatever came after the wake word, e.g. "Mike, open YouTube".
             heard = heard[found.end():].strip(" ,.!?")
-            if not heard:
-                speak("Yes?")
+            if not heard:  # just "Mike" or "Hi Mike"
+                speak("Hey! What's up?")
                 heard = listen(_mic, timeout=8)
                 if not heard:
                     continue

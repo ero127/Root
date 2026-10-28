@@ -40,13 +40,13 @@ echo ============================================================
 goto fail
 
 :have_python
-rem ---- Download everything Mike needs (one time only) ----
-if exist ".venv\mike_ready.txt" goto have_key
-echo Setting up Mike for the first time. This downloads everything he needs
+rem ---- Download everything Mike needs (again only when he needs new parts) ----
+rem mike_ready.txt is a copy of requirements.txt from the last successful setup.
+if exist ".venv\mike_ready.txt" fc /b "requirements.txt" ".venv\mike_ready.txt" >nul 2>&1 && goto have_key
+echo Setting up Mike. This downloads everything he needs
 echo and can take a few minutes. Please wait...
 echo.
-if exist ".venv" rmdir /s /q ".venv"
-"%PY%" -m venv .venv
+if not exist ".venv\Scripts\python.exe" "%PY%" -m venv .venv
 if not exist ".venv\Scripts\python.exe" (
     echo.
     echo ============================================================
@@ -66,7 +66,7 @@ if errorlevel 1 (
     goto fail
 )
 rem Only mark setup as done once everything installed, so a failed setup is retried.
-echo ok> ".venv\mike_ready.txt"
+copy /y "requirements.txt" ".venv\mike_ready.txt" >nul
 
 :have_key
 rem ---- API key (asked once, then remembered) ----

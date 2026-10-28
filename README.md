@@ -79,6 +79,13 @@ python assistant.py --always-listen      # no wake word: everything you say is a
 python assistant.py --wake-word computer # call him "computer" instead of "Mike"
 ```
 
+## Mike's voice
+
+Mike talks with a natural, human-sounding voice (Microsoft's free online neural
+voices). If that's not reachable, for example with no internet, he switches to
+the computer's built-in voice. To pick a different voice, change `VOICE` near the
+top of `assistant.py` (for example `en-US-BrianNeural` or `en-GB-RyanNeural`).
+
 ## Good to know
 
 - Mike needs an internet connection. Behind the scenes (you never see it),
