@@ -22,20 +22,45 @@ import urllib.parse
 import webbrowser
 from pathlib import Path
 
-import anthropic
-import pyttsx3
-import speech_recognition as sr
-from anthropic import beta_tool
-
 MODEL = "claude-opus-5-5"
 NOTES_FILE = Path(__file__).with_name("notes.txt")
+LOG_FILE = Path(__file__).with_name("mike_log.txt")  # what Mike did, for fixing problems
 SYSTEM = platform.system()  # "Windows", "Darwin" (macOS) or "Linux"
+# On Windows, keep commands Mike runs from flashing a black console window.
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if SYSTEM == "Windows" else 0
+
+
+def log(text: str) -> None:
+    try:
+        with LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(f"{datetime.datetime.now():%H:%M:%S} {text}\n")
+    except OSError:
+        pass
+
+
+def say_with_windows_voice(text: str) -> None:
+    """Backup voice: Windows' own built-in speech, used if the normal voice fails."""
+    safe = text.replace("'", "''")
+    subprocess.run(["powershell", "-NoProfile", "-Command",
+                    "Add-Type -AssemblyName System.Speech; "
+                    f"(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{safe}')"],
+                   creationflags=NO_WINDOW, timeout=300)
+
+
+try:
+    import anthropic
+    import pyttsx3
+    import speech_recognition as sr
+    from anthropic import beta_tool
+except Exception:
+    import traceback
+    log("Could not load Mike's parts:\n" + traceback.format_exc())
+    if SYSTEM == "Windows":
+        say_with_windows_voice("Sorry, I couldn't start. Please run start mike debug and send what it says to Claude.")
+    raise
 
 # Words that end the program when said on their own.
 EXIT_PHRASES = {"goodbye", "good bye", "bye", "exit", "quit", "shut down", "stop listening"}
-
-# On Windows, keep commands Mike runs from flashing a black console window.
-NO_WINDOW = subprocess.CREATE_NO_WINDOW if SYSTEM == "Windows" else 0
 
 client = anthropic.Anthropic()
 recognizer = sr.Recognizer()
@@ -52,8 +77,9 @@ SHOW_TEXT = False
 
 
 def show(text: str) -> None:
+    log(text.strip())
     if SHOW_TEXT:
-        print(text)
+        print(text, flush=True)
 
 
 # All speech goes through one background thread. The voice engine breaks if two
@@ -68,17 +94,27 @@ def _speech_worker() -> None:
             comtypes.CoInitialize()  # the Windows voice needs this on a non-main thread
         except Exception:
             pass
+    use_backup = False
     while True:
         text, done = _speech_queue.get()
         try:
-            # A fresh engine per call avoids pyttsx3 going silent after the first reply.
-            engine = pyttsx3.init()
-            engine.setProperty("rate", 185)
-            engine.say(text)
-            engine.runAndWait()
-            engine.stop()
+            if use_backup:
+                say_with_windows_voice(text)
+            else:
+                # A fresh engine per call avoids pyttsx3 going silent after the first reply.
+                engine = pyttsx3.init()
+                engine.setProperty("rate", 185)
+                engine.say(text)
+                engine.runAndWait()
+                engine.stop()
         except Exception as e:
-            show(f"[voice error: {e}]")
+            show(f"[voice error: {e!r}]")
+            if SYSTEM == "Windows" and not use_backup:
+                use_backup = True  # switch to Windows' built-in voice from now on
+                try:
+                    say_with_windows_voice(text)
+                except Exception as e2:
+                    show(f"[backup voice error: {e2!r}]")
         finally:
             done.set()
 
@@ -584,12 +620,18 @@ def main() -> None:
                         help="Treat everything you say as a command, no wake word needed")
     args = parser.parse_args()
     SHOW_TEXT = args.show_text
+    try:
+        LOG_FILE.write_text("", encoding="utf-8")  # start a fresh log each time
+    except OSError:
+        pass
+    log("Mike is starting")
     wake = args.wake_word.lower()
     # Speech recognition often writes "Mike" as "mic" or "Mikey", so accept those too.
     names = {wake} | ({"mic", "mikey", "myke", "mike's"} if wake == "mike" else set())
     wake_pattern = re.compile(r"\b(" + "|".join(map(re.escape, names)) + r")\b")
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+        show("No API key found")
         speak("I don't have my API key yet, so I can't think. Please run the setup again.")
         sys.exit(1)
 
@@ -600,8 +642,10 @@ def main() -> None:
         speak("I can't find a microphone. Please plug one in and start me again.")
         sys.exit(1)
 
+    log("Microphone found, measuring background noise")
     with _mic as source:  # learn how loud the room is so background noise is ignored
         recognizer.adjust_for_ambient_noise(source, duration=1.5)
+    log("Saying hello")
 
     history: list[dict] = []
     awake_until = 0.0  # after a reply you can keep talking without the wake word
@@ -611,6 +655,7 @@ def main() -> None:
     else:
         speak(f"Hi, I'm Mike. Say {args.wake_word} whenever you need me.")
 
+    log("Ready and listening")
     while True:
         heard = listen(_mic)
         if not heard:
@@ -666,5 +711,6 @@ if __name__ == "__main__":
         # There's no window to show a crash, so save it to a file and say so out loud.
         import traceback
         Path(__file__).with_name("mike_error.log").write_text(traceback.format_exc(), encoding="utf-8")
+        log("CRASH:\n" + traceback.format_exc())
         speak("Sorry, I ran into a problem and have to stop. "
               "The details are in the file mike error log, in my folder.")

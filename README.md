@@ -65,6 +65,12 @@ and you only talk. Typing in your API key that first time is the only typing you
 Also make sure your computer lets apps use the microphone (Windows: Settings →
 Privacy → Microphone; Mac: System Settings → Privacy & Security → Microphone).
 
+## If Mike doesn't talk
+
+Double-click **`start_mike_debug`** in the Mike folder. It runs Mike in a window that
+shows everything he hears and says, and any error. Send what it shows to Claude.
+Mike also writes what he did to `mike_log.txt` in his folder.
+
 ## Options
 
 ```bash

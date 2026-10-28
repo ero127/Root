@@ -85,9 +85,11 @@ call echo %%KEY%%> api_key.txt
 set /p ANTHROPIC_API_KEY=<api_key.txt
 echo.
 echo Starting Mike... he will say hello in a few seconds.
+echo If he does not say hello within 30 seconds, double-click start_mike_debug
+echo and send Claude what it shows.
 rem Run with no window at all: Mike only talks. Say "goodbye" to stop him.
 start "" ".venv\Scripts\pythonw.exe" assistant.py %*
-timeout /t 5 >nul
+timeout /t 15 >nul
 exit /b 0
 
 :fail
