@@ -600,21 +600,70 @@ def _run_tools(response) -> list[dict]:
     return results
 
 
+# Extras Mike switches off for the rest of the session if the account doesn't support them.
+_features = {"fallbacks": True, "computer": True, "web_search": True}
+_models = [MODEL, "claude-opus-5", "claude-sonnet-5-5"]  # tried in order if one isn't available
+
+
+def _tool_enabled(tool: dict) -> bool:
+    if tool.get("type", "").startswith("computer_toolset"):
+        return _features["computer"]
+    if tool.get("name") == "web_search":
+        return _features["web_search"]
+    return True
+
+
+def error_reason(e: Exception) -> str:
+    """The plain-English part of an API error."""
+    try:
+        return e.body["error"]["message"]
+    except Exception:
+        return str(e)
+
+
+def _create(messages: list):
+    """Ask Claude for the next step, working around features or models the account lacks."""
+    while True:
+        kwargs = dict(
+            model=_models[0],
+            max_tokens=8000,
+            system=SYSTEM_PROMPT,
+            tools=[t for t in TOOLS if _tool_enabled(t)],
+            messages=messages,
+            output_config={"effort": "medium"},
+        )
+        if _features["fallbacks"]:
+            # If a request is declined, the server retries it on a fallback model.
+            kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        try:
+            return client.beta.messages.create(**kwargs)
+        except anthropic.NotFoundError as e:
+            if len(_models) > 1 and "model" in error_reason(e).lower():
+                show(f"[model {_models[0]} not available, trying {_models[1]}: {error_reason(e)}]")
+                _models.pop(0)
+                continue
+            raise
+        except anthropic.BadRequestError as e:
+            reason = error_reason(e).lower()
+            if "credit balance" in reason:
+                raise
+            for feature, words in (("fallbacks", ("fallback", "beta")),
+                                   ("computer", ("computer",)),
+                                   ("web_search", ("web_search", "web search"))):
+                if _features[feature] and any(w in reason for w in words):
+                    show(f"[turning off {feature}: {error_reason(e)}]")
+                    _features[feature] = False
+                    break
+            else:
+                raise
+
+
 def ask_claude(history: list[dict]) -> str:
     """Send the conversation to Claude, let it run any commands, and return its spoken reply."""
     messages = list(history)
     announced = False
     for _ in range(MAX_STEPS):
-        response = client.beta.messages.create(
-            model=MODEL,
-            max_tokens=8000,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-            output_config={"effort": "medium"},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",  # if a request is declined, retry on a fallback model
-        )
+        response = _create(messages)
         # Keep Claude's turn exactly as it came back (it carries its reasoning between steps).
         messages.append({"role": "assistant", "content": response.content})
         if response.stop_reason == "refusal":
@@ -728,9 +777,23 @@ def main() -> None:
             reply = "I'm getting too many requests right now. Try again in a moment."
         except anthropic.APIConnectionError:
             reply = "I can't reach the internet right now."
+        except anthropic.BadRequestError as e:
+            show(f"[API error: {e}]")
+            if "credit balance" in error_reason(e).lower():
+                reply = ("Your Anthropic account is out of credit, so I can't think right now. "
+                         "Add some under Billing at console dot anthropic dot com, then try again.")
+            else:
+                reply = "Something went wrong. Claude said: " + error_reason(e)[:200]
+        except anthropic.PermissionDeniedError as e:
+            show(f"[API error: {e}]")
+            reply = ("My API key isn't allowed to use Claude yet. Check your account at "
+                     "console dot anthropic dot com. Claude said: " + error_reason(e)[:150])
+        except (anthropic.OverloadedError, anthropic.InternalServerError) as e:
+            show(f"[API error: {e}]")
+            reply = "Claude's servers are busy right now. Try again in a minute."
         except anthropic.APIStatusError as e:
             show(f"[API error: {e}]")
-            reply = "Something went wrong on my end. Please try again."
+            reply = "Something went wrong. Claude said: " + error_reason(e)[:200]
         except Exception as e:  # never die silently: there is no window to show the error
             show(f"[unexpected error: {e!r}]")
             reply = "Sorry, something went wrong with that one. Please try again."
