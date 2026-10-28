@@ -82,13 +82,12 @@ if not defined KEY (
 call echo %%KEY%%> api_key.txt
 
 :start_mike
-set /p ANTHROPIC_API_KEY=<api_key.txt
 echo.
-echo Starting Mike... he will say hello in a few seconds.
-echo If he does not say hello within 30 seconds, double-click start_mike_debug
-echo and send Claude what it shows.
-rem Run with no window at all: Mike only talks. Say "goodbye" to stop him.
-start "" ".venv\Scripts\pythonw.exe" assistant.py %*
+echo Starting Mike... he will say "Hi, I'm Mike" in a few seconds.
+echo He runs in a small window at the bottom of your screen (the taskbar).
+echo If he doesn't talk, click that "Mike" window to see what went wrong.
+rem Minimized window: Mike only talks, but any error stays visible there.
+start "Mike" /min "%~dp0run_mike.bat" %*
 timeout /t 15 >nul
 exit /b 0
 

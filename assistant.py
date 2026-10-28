@@ -624,7 +624,7 @@ def main() -> None:
         LOG_FILE.write_text("", encoding="utf-8")  # start a fresh log each time
     except OSError:
         pass
-    log("Mike is starting")
+    show("Mike is starting")
     wake = args.wake_word.lower()
     # Speech recognition often writes "Mike" as "mic" or "Mikey", so accept those too.
     names = {wake} | ({"mic", "mikey", "myke", "mike's"} if wake == "mike" else set())
@@ -642,10 +642,10 @@ def main() -> None:
         speak("I can't find a microphone. Please plug one in and start me again.")
         sys.exit(1)
 
-    log("Microphone found, measuring background noise")
+    show("Microphone found, measuring background noise")
     with _mic as source:  # learn how loud the room is so background noise is ignored
         recognizer.adjust_for_ambient_noise(source, duration=1.5)
-    log("Saying hello")
+    show("Saying hello")
 
     history: list[dict] = []
     awake_until = 0.0  # after a reply you can keep talking without the wake word
@@ -655,7 +655,7 @@ def main() -> None:
     else:
         speak(f"Hi, I'm Mike. Say {args.wake_word} whenever you need me.")
 
-    log("Ready and listening")
+    show("Ready and listening")
     while True:
         heard = listen(_mic)
         if not heard:
@@ -712,5 +712,7 @@ if __name__ == "__main__":
         import traceback
         Path(__file__).with_name("mike_error.log").write_text(traceback.format_exc(), encoding="utf-8")
         log("CRASH:\n" + traceback.format_exc())
+        traceback.print_exc()
         speak("Sorry, I ran into a problem and have to stop. "
               "The details are in the file mike error log, in my folder.")
+        sys.exit(1)
