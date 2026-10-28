@@ -3,6 +3,20 @@ setlocal
 cd /d "%~dp0"
 title Mike
 
+rem ---- Make sure Mike was unzipped (Windows runs files inside a zip from a temp folder alone) ----
+if exist "assistant.py" if exist "requirements.txt" goto files_ok
+echo.
+echo ============================================================
+echo  PROBLEM: Mike is still inside the zip file.
+echo.
+echo  1. Close this window.
+echo  2. Right-click Mike.zip and choose "Extract All...", then click Extract.
+echo  3. Open the new Mike folder and double-click start_windows there.
+echo ============================================================
+goto fail
+
+:files_ok
+
 rem ---- Find Python 3.10 to 3.13, or download and install 3.12 automatically ----
 rem (Python 3.14+ has no ready-made microphone part for Windows yet, so it can't be used.)
 call :find_python
